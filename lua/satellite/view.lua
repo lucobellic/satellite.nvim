@@ -52,12 +52,14 @@ end)
 local function render_scrollbar(winid, bwinid)
   local bbufnr = api.nvim_win_get_buf(bwinid)
   local winheight = util.get_winheight(winid)
+  local width = user_config.width
+  local line_content = string.rep(' ', width)
 
   -- Initialise buffer lines if needed
   if api.nvim_buf_line_count(bbufnr) ~= winheight then
     local lines = {} --- @type string[]
     for i = 1, winheight do
-      lines[i] = ' '
+      lines[i] = line_content
     end
 
     vim.bo[bbufnr].modifiable = true
@@ -81,6 +83,7 @@ local function render_scrollbar(winid, bwinid)
     pcall(api.nvim_buf_set_extmark, bbufnr, ns, i, 0, {
       virt_text = { { ' ', style } },
       virt_text_pos = 'overlay',
+      virt_text_win_col = width - 1,
       priority = 1,
     })
   end
@@ -90,6 +93,8 @@ end
 --- @param winid integer
 --- @return integer bar_winid
 local function get_or_create_view(winid)
+  local max_width = user_config.width
+
   local cfg = {
     win = winid,
     relative = 'win',
@@ -97,23 +102,13 @@ local function get_or_create_view(winid)
     border = 'none',
     focusable = false,
     zindex = user_config.zindex,
-    width = 1,
+    width = max_width,
     row = 0,
     height = util.get_winheight(winid),
-    col = api.nvim_win_get_width(winid) - 1,
+    col = api.nvim_win_get_width(winid) - max_width,
   }
 
   local bar_winid = winids[winid]
-  if bar_winid then
-    local bar_wininfo = vim.fn.getwininfo(bar_winid)[1]
-    -- wininfo can be nil when pressing <C-w>o in help buffers
-    if bar_wininfo then
-      local signwidth = bar_wininfo.textoff
-      cfg.col = cfg.col - signwidth
-      cfg.width = cfg.width + signwidth
-    end
-  end
-
   if bar_winid and api.nvim_win_is_valid(bar_winid) then
     api.nvim_win_set_config(bar_winid, cfg)
   else

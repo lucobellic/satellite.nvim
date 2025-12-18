@@ -23,12 +23,14 @@
 --- @field winblend integer
 --- @field zindex integer
 --- @field excluded_filetypes string[]
+--- @field width integer Maximum width of the satellite bar (default 2)
 local user_config = {
   handlers = {},
   current_only = false,
   winblend = 50,
   zindex = 40,
   excluded_filetypes = {},
+  width = 2,
 }
 
 local M = {}

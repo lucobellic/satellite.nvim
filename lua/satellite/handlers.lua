@@ -82,15 +82,13 @@ function Handler:apply_mark(bufnr, m, max_pos)
     priority = self.config.priority,
   }
 
-  if self.config.overlap ~= false then
-    opts.virt_text = { { m.symbol, m.highlight } }
-    opts.virt_text_pos = 'overlay'
-    opts.hl_mode = 'combine'
-  else
-    -- Signs are 2 chars so fill the first char with whitespace
-    opts.sign_text = ' ' .. m.symbol
-    opts.sign_hl_group = m.highlight
-  end
+  -- Always use virt_text for rendering marks
+  -- Position in first column (col=0) for non-overlap, second column (col=1) for overlap
+  local col = self.config.overlap ~= false and 1 or 0
+  opts.virt_text = { { m.symbol, m.highlight } }
+  opts.virt_text_pos = 'overlay'
+  opts.virt_text_win_col = col
+  opts.hl_mode = 'combine'
 
   local ok, err = pcall(api.nvim_buf_set_extmark, bufnr, self.ns, m.pos, 0, opts)
   if not ok then
