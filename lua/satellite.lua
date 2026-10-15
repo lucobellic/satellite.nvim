@@ -139,7 +139,6 @@ local function apply_keymaps()
       end
       local seq = prev .. typed
       if foldmaps[seq] or seq == 'zf' then
-        util.invalidate_virtual_line_count_cache(0)
         view.schedule_refresh()
       end
       prev = ''
@@ -156,7 +155,6 @@ local function apply_keymaps()
     for seq in pairs(foldmaps) do
       if vim.fn.maparg(seq) == '' then
         vim.keymap.set({ 'n', 'x' }, seq, function()
-          util.invalidate_virtual_line_count_cache(0)
           view.schedule_refresh()
           return seq
         end, { unique = true, expr = true })

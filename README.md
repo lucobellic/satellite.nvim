@@ -25,6 +25,10 @@ Neovim nightly
 
 ## Usage
 
+Scrollbar positions use buffer line numbers rather than rendered screen heights.
+This avoids parsing or rendering text outside the viewport on large files.
+Wrapped lines, closed folds, and concealed or virtual lines do not change the scale.
+
 Enabled by default. Configuration can optionally be passed to the `setup()`
 function. Here is an example with most of the default settings:
 

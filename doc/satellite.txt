@@ -14,6 +14,10 @@ REQUIREMENTS                                          *satellite-requirements*
 ==============================================================================
 USAGE                                                        *satellite-usage*
 
+Scrollbar positions use buffer line numbers rather than rendered screen heights.
+This avoids parsing or rendering text outside the viewport on large files.
+Wrapped lines, closed folds, and concealed or virtual lines do not change the scale.
+
 For basic setup with all batteries included:
 >lua
     require('satellite').setup()

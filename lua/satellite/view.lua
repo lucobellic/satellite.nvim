@@ -148,6 +148,7 @@ local function get_or_create_view(winid)
   local topline, botline = util.visible_line_range(winid)
   local toprow = util.row_to_barpos(winid, topline - 1)
   local height = util.height_to_virtual(winid, topline - 1, botline - 1)
+  height = math.min(height, cfg.height - toprow)
 
   vim.w[bar_winid].col = cfg.col
   vim.w[bar_winid].width = cfg.width
@@ -160,8 +161,6 @@ end
 --- @param bwinid integer
 --- @param winid integer
 local function render(bwinid, winid)
-  util.invalidate_virtual_line_count_cache(winid)
-
   render_scrollbar(winid, bwinid)
 
   local Handlers = require('satellite.handlers')
@@ -253,7 +252,6 @@ end
 
 --- @param winid integer
 local function close(winid)
-  util.invalidate_virtual_line_count_cache(winid)
   local bar_winid = get_bar_winid(winid)
   if not bar_winid then
     return

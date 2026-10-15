@@ -8,6 +8,11 @@ local t = vim.keycode
 local LEFTMOUSE = t '<leftmouse>'
 local LEFTRELEASE = t '<leftrelease>'
 
+---@param winid integer
+---@param bufnr integer
+---@param row integer
+---@param bar_height integer
+---@return integer
 local function get_topline(winid, bufnr, row, bar_height)
   if row == 0 then
     -- If the scrollbar was dragged to the top of the window, always show
@@ -22,7 +27,11 @@ local function get_topline(winid, bufnr, row, bar_height)
     return api.nvim_buf_line_count(bufnr)
   end
 
-  return math.max(1, util.virtual_topline_lookup(winid)[row])
+  local line = util.barpos_to_line(winid, row)
+  return api.nvim_win_call(winid, function()
+    local fold_start = fn.foldclosed(line)
+    return fold_start == -1 and line or fold_start
+  end)
 end
 
 --- Scrolls the window so that the specified line number is at the top.
@@ -33,11 +42,8 @@ local function set_topline(winid, linenr)
     local init_line = fn.line('.')
     vim.cmd('keepjumps normal! ' .. linenr .. 'G')
     local topline = util.visible_line_range(winid)
-    -- Use virtual lines to figure out how much to scroll up. winline() doesn't
-    -- accommodate wrapped lines.
-    local virtual_line = util.virtual_line_count(winid, topline, fn.line('.'))
-    if virtual_line > 1 then
-      vim.cmd('keepjumps normal! ' .. (virtual_line - 1) .. t '<c-e>')
+    if topline < fn.line('.') then
+      vim.cmd('keepjumps normal! zt')
     end
     local _, botline = util.visible_line_range(winid)
     if botline == fn.line('$') then
@@ -289,10 +295,6 @@ function M.handle_leftmouse()
     -- processed
     return
   end
-
-  -- Computing this prior to the first mouse event could distort the location
-  -- since this could be an expensive operation (and the mouse could move).
-  util.invalidate_virtual_topline_lookup()
 
   local count = 0
   local winid --- @type integer The target window ID for a mouse scroll.

@@ -1,6 +1,7 @@
 local api = vim.api
 local fn = vim.fn
 
+---@class Satellite.Util
 local M = {}
 
 --- @generic F: function
@@ -20,68 +21,6 @@ function M.debounce_trailing(f, ms)
   end
 end
 
---- @type table<integer,table<integer,table<integer,integer>>>
-local virtual_line_count_cache = vim.defaulttable()
-
-function M.invalidate_virtual_line_count_cache(winid)
-  virtual_line_count_cache[winid] = nil
-end
-
---- Returns the count of virtual lines between the specified start and end lines
---- (both inclusive), in the specified window. A closed fold counts as one
---- virtual line.
---- @param winid integer
---- @param start integer
---- @param vend? integer
---- @return integer
-function M.virtual_line_count(winid, start, vend)
-  local buf = api.nvim_win_get_buf(winid)
-  local max_vend = api.nvim_buf_line_count(buf) - 1
-  vend = vend or max_vend
-
-  if vend == 0 then
-    return 0
-  end
-
-  local cached = rawget(virtual_line_count_cache[winid][start], vend)
-  if cached then
-    return cached
-  end
-
-  if api.nvim_win_text_height then
-    local res = api.nvim_win_text_height(winid, {
-      start_row = start,
-      end_row = math.min(vend, max_vend),
-    })
-    --- @cast res -string
-    virtual_line_count_cache[winid][start][vend] = res.all
-    return res.all
-  end
-
-  return api.nvim_win_call(winid, function()
-    local vline = 0
-    local line = start
-    while line <= vend do
-      vline = vline + 1
-      local foldclosedend = fn.foldclosedend(line)
-      if foldclosedend ~= -1 then
-        line = foldclosedend
-      end
-      -- This function is called a lot so cache every line
-      virtual_line_count_cache[winid][start][line] = vline
-      line = line + 1
-    end
-    return vline
-  end)
-end
-
---- @type table<integer,integer[]>
-local virtual_topline_lookup_cache = vim.defaulttable()
-
-function M.invalidate_virtual_topline_lookup()
-  virtual_topline_lookup_cache = vim.defaulttable()
-end
-
 --- Returns the height of a window excluding the winbar
 --- @param winid integer
 --- @return integer
@@ -95,71 +34,6 @@ function M.get_winheight(winid)
   return winheight
 end
 
---- Returns an array that maps window rows to the topline that corresponds to a
---- scrollbar at that row under virtual satellite mode, in the current window.
---- The computation primarily loops over lines, but may loop over virtual spans
---- as part of calling 'virtual_line_count', so the cursor may be moved.
---- @param winid integer
---- @return table<integer,integer>
-function M.virtual_topline_lookup(winid)
-  if rawget(virtual_topline_lookup_cache, winid) then
-    return virtual_topline_lookup_cache[winid]
-  end
-
-  local winheight = M.get_winheight(winid)
-  local total_vlines = M.virtual_line_count(winid, 1)
-  if not (total_vlines > 1 and winheight > 1) then
-    virtual_topline_lookup_cache[winid] = {}
-    return virtual_topline_lookup_cache[winid]
-  end
-
-  local bufnr = api.nvim_win_get_buf(winid)
-  local last_line = api.nvim_buf_line_count(bufnr)
-
-  virtual_topline_lookup_cache[winid] = api.nvim_win_call(winid, function()
-    local result = {} --- @type integer[] A list of line numbers
-    local count = 1 -- The count of virtual lines
-    local line = 1
-    local best = line
-    local best_distance = math.huge
-    local best_count = count
-    for row = 1, winheight do
-      local proportion = (row - 1) / (winheight - 1)
-      while line <= last_line do
-        local current = (count - 1) / (total_vlines - 1)
-        local distance = math.abs(current - proportion)
-        if distance <= best_distance then
-          best = line
-          best_distance = distance
-          best_count = count
-        elseif distance > best_distance then
-          -- Prepare variables so that the next row starts iterating at the
-          -- current line and count, using an infinite best distance.
-          line = best
-          best_distance = math.huge
-          count = best_count
-          break
-        end
-        local foldclosedend = fn.foldclosedend(line)
-        if foldclosedend ~= -1 then
-          line = foldclosedend
-        end
-        line = line + 1
-        count = count + 1
-      end
-      local value = best
-      local foldclosed = fn.foldclosed(value)
-      if foldclosed ~= -1 then
-        value = foldclosed
-      end
-      table.insert(result, value)
-    end
-    return result
-  end)
-
-  return virtual_topline_lookup_cache[winid]
-end
-
 --- Round to the nearest integer.
 --- WARN: .5 rounds to the right on the number line, including for negatives
 --- (which would not result in rounding up in magnitude).
@@ -170,36 +44,42 @@ function M.round(x)
   return math.floor(x + 0.5)
 end
 
+---Scale a buffer range without rendering text outside the viewport.
+---@public
 --- @param winid integer
---- @param row integer
---- @param row2 integer
---- @return number
-local function height_to_virtual(winid, row, row2)
-  local vlinecount0 = M.virtual_line_count(winid, 1) - 1
-  local vheight = M.virtual_line_count(winid, row, row2)
-  local winheight0 = M.get_winheight(winid) - 1
-  return winheight0 * vheight / vlinecount0
-end
-
---- @param winid integer
---- @param row integer
---- @param row2 integer
+--- @param row integer First buffer row, zero based
+--- @param row2 integer Last buffer row, zero based and inclusive
 --- @return integer
 function M.height_to_virtual(winid, row, row2)
-  local height = M.round(height_to_virtual(winid, row, row2))
-  if height < 1 then
-    height = 1
-  end
-  return height
+  local line_count = api.nvim_buf_line_count(api.nvim_win_get_buf(winid))
+  local winheight = math.max(1, M.get_winheight(winid))
+  local height = M.round(winheight * math.max(0, row2 - row + 1) / line_count)
+  return math.max(1, math.min(winheight, height))
 end
 
+---Map a buffer row to a scrollbar row using logical line positions.
+---@public
 --- @param winid integer
---- @param row integer
+--- @param row integer Buffer row, zero based
 --- @return integer, number
 function M.row_to_barpos(winid, row)
-  local v = height_to_virtual(winid, 1, row)
+  local last_row = api.nvim_buf_line_count(api.nvim_win_get_buf(winid)) - 1
+  local last_bar_row = math.max(0, M.get_winheight(winid) - 1)
+  local v = last_bar_row * math.max(0, math.min(last_row, row)) / math.max(1, last_row)
   local vr = M.round(v)
   return vr, vr - v
+end
+
+---Map a scrollbar row back to a buffer line without scanning the buffer.
+---@public
+---@param winid integer
+---@param row integer Scrollbar row, zero based
+---@return integer line Buffer line, one based
+function M.barpos_to_line(winid, row)
+  local last_row = api.nvim_buf_line_count(api.nvim_win_get_buf(winid)) - 1
+  local last_bar_row = math.max(0, M.get_winheight(winid) - 1)
+  local position = math.max(0, math.min(last_bar_row, row))
+  return M.round(last_row * position / math.max(1, last_bar_row)) + 1
 end
 
 --- Run callback when command is run
